@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.0)
+cmake_minimum_required(VERSION 3.9.0)
 
 project(o2)
 
@@ -20,7 +20,6 @@ add_definitions("-D_FORTIFY_SOURCE=0")
 
 if(WIN32)
   add_definitions("-D_CRT_SECURE_NO_WARNINGS -D_WINSOCK_DEPRECATED_NO_WARNINGS -DIS_BIG_ENDIAN=0")
-  include(static.cmake)
   set(EXTRA_LIBS winmm.lib ws2_32.lib Iphlpapi.lib)
 endif(WIN32)
 
@@ -49,23 +48,25 @@ set(O2_SRC
   src/o2_socket.c src/o2_socket.h 
   src/o2_clock.c src/o2_clock.h
   # src/o2_debug.c src/o2_debug.h
-  src/o2_interoperation.c src/o2_interoperation.h
-  )  
+  src/o2_interoperation.c src/o2_interoperation.h)
  
-add_library(o2_static STATIC ${O2_SRC})  
- 
+add_library(o2_static STATIC ${O2_SRC})
+target_link_libraries(o2_static ${EXTRA_LIBS})
+
 #target_include_directories(o2_static PRIVATE ${no include directories})
 
 #######################
 # BUILD CONFIGURATION #
 #######################
 
-set(LIBRARIES o2_static ${EXTRA_LIBS} CACHE INTERNAL "") 
+set(LIBRARIES o2_static CACHE INTERNAL "") 
 
 if(BUILD_TESTS)
 message(STATUS "Building test programs")
 
 set(BUILD_STATIC_LIB TRUE CACHE BOOL "Build a static lib -- currently the only thing supported, turning OFF probably gives you a static library without a static runtime library option.")
+
+include_directories(src)
 
 # DEAL WITH WINDOWS OPTIONS: DEATH BY A THOUSAND CUTS
 if(WIN32)
@@ -299,3 +300,8 @@ if(BUILD_TESTS_WITH_LIBLO)
   target_link_libraries(lo_bndlrecv ${LIBLO_LIB}  ${EXTRA_LO_LIBS})     
 endif(BUILD_TESTS_WITH_LIBLO)
 endif(BUILD_TESTS)
+
+install( TARGETS o2_static EXPORT O2Targets
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib 
+  PUBLIC_HEADER DESTINATION include)

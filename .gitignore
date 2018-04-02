@@ -1,4 +1,5 @@
 *.cmake
+.vs/
 o2.xcodeproj/
 o2.build/
 CMakeFiles/

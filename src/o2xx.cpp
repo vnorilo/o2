@@ -32,6 +32,12 @@ namespace o2 {
 		method->proc(argv, argc);
 	}
 
+	void service::callback_relay(const o2_msg_data_ptr msg, const char *ty, o2_arg_ptr* argv, int argc, void* user) {
+		auto relay = (wrapper_t*)user;
+		o2_extract_start(msg);
+		(*relay)(msg, ty);
+	}
+
 	service::service(const application& a, std::string n) :name(std::move(n)), app(a) {
 		if (o2_service_new(name.c_str()) != O2_SUCCESS) {
 			throw std::runtime_error("failed to create o2 service");

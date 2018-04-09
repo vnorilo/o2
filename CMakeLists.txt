@@ -121,14 +121,27 @@ set(SINGLE_C_FILE_TESTS
 	infotest1
 	infotest2)
 
+set(SINGLE_CXX_FILE_TESTS 
+	cxxtest)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)	
+
 foreach(C_FILE ${SINGLE_C_FILE_TESTS})
 	add_executable(${C_FILE} test/${C_FILE}.c)
 	target_link_libraries(${C_FILE} ${LIBRARIES})
 	set_target_properties(${C_FILE} PROPERTIES FOLDER tests)
 endforeach()
+
+if (BUILD_CXX_WRAPPER)
+foreach(CXX_FILE ${SINGLE_CXX_FILE_TESTS})
+	add_executable(${CXX_FILE} test/${CXX_FILE}.cpp)
+	target_link_libraries(${CXX_FILE} ${LIBRARIES})
+	set_target_properties(${CXX_FILE} PROPERTIES FOLDER tests)
+endforeach()
+endif()
 endif()
  
+
 if(UNIX)
   if(APPLE)
     # EXTRA_LO_LIBS is libraries needed by Liblo applications

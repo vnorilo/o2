@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <tuple>
 
 namespace o2 {
 	std::string get_machine_identifier();
@@ -23,13 +24,82 @@ namespace o2 {
 	using int64 = std::int64_t;
 
 	namespace detail {
-		static o2_type o2_signature(float) { return O2_FLOAT; }
-		static o2_type o2_signature(int32) { return O2_INT32; }
-		static o2_type o2_signature(int64) { return O2_INT64; }
-		static o2_type o2_signature(double) { return O2_DOUBLE; }
-		static o2_type o2_signature(const char*) { return O2_STRING; }
-		static o2_type o2_signature(std::string) { return O2_STRING; }
-		static o2_type o2_signature(symbol_t) { return O2_SYMBOL; }
+#define FOREACH_PRIMITIVE \
+	F(O2_FLOAT, float, f32) \
+	F(O2_INT32, int32, i32) \
+	F(O2_INT64, int64, i64) \
+	F(O2_DOUBLE, double, f64) \
+	F(O2_STRING, const char*, s) \
+	F(O2_STRING, std::string, s) \
+	F(O2_SYMBOL, symbol_t, S)
+
+#define F(O2_TYPE, C_TYPE, UNION_MEMBER) \
+static o2_type o2_signature(C_TYPE) { return O2_TYPE; }
+FOREACH_PRIMITIVE
+#undef F
+
+		template <typename T> static T extract(o2_arg_ptr p);
+
+#define F(O2_TYPE, C_TYPE, UNION_MEMBER) \
+template <> static C_TYPE extract<C_TYPE>(o2_arg_ptr p) { return {p->UNION_MEMBER}; }
+FOREACH_PRIMITIVE
+#undef F
+
+		template <typename T> static T o2_decode() { 
+			auto p = o2_get_next(o2_signature(T()));
+			if (!p) throw std::runtime_error("Type mismatch in method handler");
+			return extract<T>(p); 
+		}
+
+		template <typename... TElem> struct static_list {
+		};
+
+		template <typename TFirst, typename... TRest> struct static_list<TFirst, TRest...> {
+			using first_t = TFirst;
+			using rest_t = static_list<TRest...>;
+			rest_t rest() const { return rest_t{}; }
+		};
+
+		using static_nil = static_list<>;
+
+		template <typename TRet, typename... TArgs> struct functor_traits {
+			using ret_t = TRet;
+			using arg_t = std::tuple<TArgs...>;
+
+			constexpr const char* typestring() const {
+				static const char sig[] = {
+					(char)o2_signature(TArgs())...
+				};
+				return sig;
+			}
+
+			template <typename T, typename... TDecoded>
+			void _relay(const T& fn, static_nil, TDecoded&&... args) const {
+				fn(std::forward<TDecoded>(args)...);
+			}
+
+			template <typename T, typename TList, typename... TDecoded> 
+			void _relay(const T& fn, TList to_decode, TDecoded&&... args) const {
+				_relay(fn, to_decode.rest(), o2_decode<typename TList::first_t>(), std::forward<TDecoded>(args)...);
+			}
+
+			template <typename T> void relay(const T& fn) const {
+				_relay(fn, static_list<TArgs...>{});
+			}
+		};
+
+		template <typename TObj, typename TRet, typename... TArgs>
+		functor_traits<TRet, TArgs...> get_traits(const TObj&, TRet(TObj::*)(TArgs...) const) {
+			return {};
+		}
+
+		template <typename T> auto infer_signature(const T& fn, void(T::*class_sfinae)() = nullptr) {
+			return get_traits(fn, &T::operator());
+		}
+
+		template <typename TRet, typename... TArgs> functor_traits<TRet, TArgs...> infer_signature(TRet(*)(TArgs...)) {
+			return {};
+		}
 	}
 
 	using method_t = std::function<void(o2_arg_ptr*, int)>;	
@@ -47,6 +117,7 @@ namespace o2 {
 
 		client(const application& a, std::string n):name(std::move(n)), app(a) { }
 
+#undef FOREACH_PRIMITIVE
 #define FOREACH_PRIMITIVE F(float) F(int32) F(double) F(int64) F(bool) F(char)
 #define F(Type) void add(Type v) const { o2_add_ ## Type (v); }
 		FOREACH_PRIMITIVE
@@ -115,9 +186,13 @@ namespace o2 {
 			method_t proc;
 		};
 
+		using wrapper_t = std::function<void(const o2_msg_data_ptr msg, const char *ty)>;
+
 		std::forward_list<std::unique_ptr<method_record_t>> methods;
+		std::forward_list<std::unique_ptr<wrapper_t>> wrappers;
 
 		static void callback_wrapper(const o2_msg_data_ptr msg, const char* ty, o2_arg_ptr* argv, int argc, void *user);
+		static void callback_relay(const o2_msg_data_ptr msg, const char* ty, o2_arg_ptr* argv, int argc, void *user);
 
 		service(const application& a, std::string n);
 
@@ -129,6 +204,16 @@ namespace o2 {
 
 		int implement(std::string path, const std::string& ty, method_t method);
 		int implement(std::string path, const std::string& ty, std::string doc, method_t method);
+
+		template <typename TFnObj>
+		int implement(std::string path, const TFnObj& fn) {
+			auto traits = detail::infer_signature(fn);
+			wrappers.emplace_front(std::make_unique<wrapper_t>([fn, traits](const o2_msg_data_ptr msg, const char *ty) {
+				traits.relay(fn);
+			}));
+			path = "/" + name + "/" + path;
+			return o2_method_new(path.c_str(), traits.typestring(), callback_relay, wrappers.front().get(), false, false);
+		}
 
 		const std::string& get_name() const {
 			return name;

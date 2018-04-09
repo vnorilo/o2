@@ -10,6 +10,8 @@ requiring liblo library (only enabled if BUILD_TESTS is ON)")
 set(BUILD_MIDI_EXAMPLE OFF CACHE BOOL "Compile midiclient & midiserver,
 requiring portmidi library")
 
+set(BUILD_CXX_WRAPPER ON CACHE BOOL "Build the C++ bindings into the library")
+
 # O2 intentionally writes outside of declared array bounds (and
 #  carefully insures that space is allocated beyond array bounds,
 #  especially for message data, which is declared char[4], but can
@@ -49,6 +51,12 @@ set(O2_SRC
   src/o2_clock.c src/o2_clock.h
   # src/o2_debug.c src/o2_debug.h
   src/o2_interoperation.c src/o2_interoperation.h)
+
+if (BUILD_CXX_WRAPPER)
+	list(APPEND O2_SRC 
+		src/o2_audio.cpp src/o2_audio.h
+		src/o2xx.cpp src/o2xx.h)
+endif()
  
 add_library(o2_static STATIC ${O2_SRC})
 target_link_libraries(o2_static ${EXTRA_LIBS})
@@ -89,95 +97,38 @@ endif(WIN32)
 
 # EXECUTABLE
 # Create executables 
-add_executable(dispatchtest test/dispatchtest.c)  
-target_include_directories(dispatchtest PRIVATE ${CMAKE_SOURCE_DIR}/src)  
-target_link_libraries(dispatchtest ${LIBRARIES}) 
+set(SINGLE_C_FILE_TESTS 
+	dispatchtest 
+	typestest
+	taptest 
+	coercetest
+	longtest
+	arraytest
+	o2client
+	o2server
+	statusclient
+	statusserver
+	tcpclient
+	tcpserver
+	clockslave
+	clockmaster
+	oscsendtest
+	oscrecvtest
+	oscanytest
+	bundletest
+	oscbndlsend
+	oscbndlrecv
+	infotest1
+	infotest2)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)	
+foreach(C_FILE ${SINGLE_C_FILE_TESTS})
+	add_executable(${C_FILE} test/${C_FILE}.c)
+	target_link_libraries(${C_FILE} ${LIBRARIES})
+	set_target_properties(${C_FILE} PROPERTIES FOLDER tests)
+endforeach()
+endif()
  
-add_executable(typestest test/typestest.c)   
-target_include_directories(typestest PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(typestest ${LIBRARIES}) 
-
-add_executable(taptest test/taptest.c)   
-target_include_directories(taptest PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(taptest ${LIBRARIES}) 
-
-add_executable(coercetest test/coercetest.c)    
-target_include_directories(coercetest PRIVATE ${CMAKE_SOURCE_DIR}/src)    
-target_link_libraries(coercetest ${LIBRARIES}) 
-   
-add_executable(longtest test/longtest.c)     
-target_include_directories(longtest PRIVATE ${CMAKE_SOURCE_DIR}/src)     
-target_link_libraries(longtest ${LIBRARIES}) 
-    
-add_executable(arraytest test/arraytest.c)     
-target_include_directories(arraytest PRIVATE ${CMAKE_SOURCE_DIR}/src)     
-target_link_libraries(arraytest ${LIBRARIES}) 
-    
-add_executable(o2client test/o2client.c) 
-target_include_directories(o2client PRIVATE ${CMAKE_SOURCE_DIR}/src) 
-target_link_libraries(o2client ${LIBRARIES}) 
-
-add_executable(o2server test/o2server.c) 
-target_include_directories(o2server PRIVATE ${CMAKE_SOURCE_DIR}/src) 
-target_link_libraries(o2server ${LIBRARIES}) 
-
-add_executable(statusclient test/statusclient.c)
-target_include_directories(statusclient PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(statusclient ${LIBRARIES}) 
-  
-add_executable(statusserver test/statusserver.c)   
-target_include_directories(statusserver PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(statusserver ${LIBRARIES}) 
- 
-add_executable(tcpclient test/tcpclient.c)   
-target_include_directories(tcpclient PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(tcpclient ${LIBRARIES}) 
-  
-add_executable(tcpserver test/tcpserver.c)   
-target_include_directories(tcpserver PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(tcpserver ${LIBRARIES}) 
- 
-add_executable(clockslave test/clockslave.c) 
-target_include_directories(clockslave PRIVATE ${CMAKE_SOURCE_DIR}/src) 
-target_link_libraries(clockslave ${LIBRARIES}) 
-
-add_executable(clockmaster test/clockmaster.c)  
-target_include_directories(clockmaster PRIVATE ${CMAKE_SOURCE_DIR}/src)  
-target_link_libraries(clockmaster ${LIBRARIES}) 
-
-add_executable(oscsendtest test/oscsendtest.c)  
-target_include_directories(oscsendtest PRIVATE ${CMAKE_SOURCE_DIR}/src)  
-target_link_libraries(oscsendtest ${LIBRARIES}) 
- 
-add_executable(oscrecvtest test/oscrecvtest.c)   
-target_include_directories(oscrecvtest PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(oscrecvtest ${LIBRARIES}) 
-  
-add_executable(oscanytest test/oscanytest.c)   
-target_include_directories(oscanytest PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(oscanytest ${LIBRARIES}) 
-  
-add_executable(bundletest test/bundletest.c)   
-target_include_directories(bundletest PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(bundletest ${LIBRARIES}) 
-  
-add_executable(oscbndlsend test/oscbndlsend.c)   
-target_include_directories(oscbndlsend PRIVATE ${CMAKE_SOURCE_DIR}/src)   
-target_link_libraries(oscbndlsend ${LIBRARIES}) 
-
-add_executable(oscbndlrecv test/oscbndlrecv.c)    
-target_include_directories(oscbndlrecv PRIVATE ${CMAKE_SOURCE_DIR}/src)    
-target_link_libraries(oscbndlrecv ${LIBRARIES})  
-
-add_executable(infotest1 test/infotest1.c)    
-target_include_directories(infotest1 PRIVATE ${CMAKE_SOURCE_DIR}/src)    
-target_link_libraries(infotest1 ${LIBRARIES})  
- 
-add_executable(infotest2 test/infotest2.c)    
-target_include_directories(infotest2 PRIVATE ${CMAKE_SOURCE_DIR}/src)    
-target_link_libraries(infotest2 ${LIBRARIES})  
-endif(BUILD_TESTS)
-
 if(UNIX)
   if(APPLE)
     # EXTRA_LO_LIBS is libraries needed by Liblo applications
@@ -245,22 +196,6 @@ message(STATUS LIBRARIES=${LIBRARIES})
 #add_executable(broadcastserver test/broadcastserver.c) 
 #add_executable(tcppollclient test/tcppollclient.c) 
 #add_executable(tcppollserver test/tcppollserver.c) 
-
-
-
-# I don't know if this is necessary. If it is, it should be duplicated
-# for o2client and o2server:
-#if(WIN32)
-  #set_target_properties(o2test PROPERTIES 
-                               #LINK_FLAGS "/SUBSYSTEM:WINDOWS")
-  #set_property(TARGET o2test PROPERTY WIN32_EXECUTABLE TRUE)
-#endif(WIN32)
-
-##########################################################
-# liblo was used for some performance comparisons, but it 
-# is disabled/commented out to remove the liblo path and 
-# library dependencies from this CMakeLists.txt file 
-##########################################################
 
 if(BUILD_TESTS)
 if(BUILD_TESTS_WITH_LIBLO)

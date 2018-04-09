@@ -1,27 +1,13 @@
 #include "o2xx.h"
+
+extern "C" {
+#include "o2_internal.h"
+}
+
 #include <regex>
 
 #ifndef NDEBUG
 #include <iostream>
-#endif
-
-#ifdef WIN32
-#include <windows.h>
-static std::string get_id() {
-	char computer_name[1024];
-	DWORD size = sizeof(computer_name);
-	GetComputerName(computer_name, &size);
-	return computer_name;
-}
-#else
-#include <sys/utsname.h>
-static std::string get_id() {
-	struct utsname u;
-	if (uname(&u) < 0) {
-		return "unknown";
-	}
-	return u.nodename;
-}
 #endif
 
 namespace o2 {
@@ -81,20 +67,10 @@ namespace o2 {
 	application::application(std::string n, int rate) :name(std::move(n)) {
 		o2_initialize(n.c_str());		
 
-		local_process = "process." + get_id();
+		local_process = o2_process->proc.name;
 
 		o2_service_new(local_process.c_str());
-		o2_method_new(("/" + local_process + "/get-reply").c_str(), nullptr, reply_wrapper, this, 0, 0);
-		o2_method_new(("/" + local_process + "/si").c_str(), "sis", [](o2_msg_data_ptr msg, const char* ty, o2_arg_ptr* argv, int argc, void* user) {
-			o2_extract_start(msg);
-			auto service = o2_get_next(O2_STRING);
-			auto status = o2_get_next(O2_INT32);
-			if (service && status) {
-#ifndef NDEBUG
-				std::cout << "* Discovered " << service->s << ": " << status->i << "\n";
-#endif
-			}
-		}, this, 0, 0);
+		o2_method_new((get_reply_address() + "/get-reply").c_str(), nullptr, reply_wrapper, this, 0, 0);
 
 		worker = std::thread([rate]() {
 			auto sleep_dur = std::chrono::microseconds(1000000 / rate);
@@ -137,7 +113,7 @@ namespace o2 {
 
 	std::string on_reply(const application& app, std::int64_t id, reply_handler_t handler) {
 		app.reply_handlers.emplace(id, std::move(handler));
-		return "/" + app.local_process;
+		return app.get_reply_address();
 	}
 
 	const char* directory::unique(const char *str) {
@@ -195,9 +171,5 @@ namespace o2 {
 				cb(m.first.c_str(), m.second.doc, m.second.typestring);
 			}
 		}
-	}
-
-	std::string get_machine_identifier() {
-		return get_id();
 	}
 }

@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <tuple>
+#include <future>
 
 namespace o2 {
 	std::string get_machine_identifier();
@@ -19,6 +20,8 @@ namespace o2 {
 	struct symbol_t {
 		std::string symbol;
 	};
+
+	struct void_t {};
 
 	using int32 = std::int32_t;
 	using int64 = std::int64_t;
@@ -62,9 +65,39 @@ FOREACH_PRIMITIVE
 
 		using static_nil = static_list<>;
 
-		template <typename TRet, typename... TArgs> struct functor_traits {
+		template <typename...> struct functor_traits;
+
+		template <typename TRet, typename... TArgs> struct functor_traits<TRet, TArgs...> {
 			using ret_t = TRet;
 			using arg_t = std::tuple<TArgs...>;
+			constexpr static bool is_query = true;
+
+			constexpr const char* typestring() const {
+				static const char sig[] = {
+					'h', 's', (char)o2_signature(TArgs())...
+				};
+				return sig;
+			}
+
+			template <typename T, typename... TDecoded>
+			auto _relay(const T& fn, static_nil, TDecoded&&... args) const {
+				return fn(std::forward<TDecoded>(args)...);
+			}
+
+			template <typename T, typename TList, typename... TDecoded> 
+			auto _relay(const T& fn, TList to_decode, TDecoded&&... args) const {
+				return _relay(fn, to_decode.rest(), o2_decode<typename TList::first_t>(), std::forward<TDecoded>(args)...);
+			}
+
+			template <typename T> auto relay(const T& fn) const {
+				return _relay(fn, static_list<TArgs...>{});
+			}
+		};
+
+		template <typename... TArgs> struct functor_traits<void, TArgs...> {
+			using ret_t = void;
+			using arg_t = std::tuple<TArgs...>;
+			constexpr static bool is_query = false;
 
 			constexpr const char* typestring() const {
 				static const char sig[] = {
@@ -78,13 +111,14 @@ FOREACH_PRIMITIVE
 				fn(std::forward<TDecoded>(args)...);
 			}
 
-			template <typename T, typename TList, typename... TDecoded> 
+			template <typename T, typename TList, typename... TDecoded>
 			void _relay(const T& fn, TList to_decode, TDecoded&&... args) const {
 				_relay(fn, to_decode.rest(), o2_decode<typename TList::first_t>(), std::forward<TDecoded>(args)...);
 			}
 
-			template <typename T> void relay(const T& fn) const {
+			template <typename T> void_t relay(const T& fn) const {
 				_relay(fn, static_list<TArgs...>{});
+				return {};
 			}
 		};
 
@@ -119,31 +153,37 @@ FOREACH_PRIMITIVE
 
 #undef FOREACH_PRIMITIVE
 #define FOREACH_PRIMITIVE F(float) F(int32) F(double) F(int64) F(bool) F(char)
-#define F(Type) void add(Type v) const { o2_add_ ## Type (v); }
+#define F(Type) static void add(Type v) { o2_add_ ## Type (v); }
 		FOREACH_PRIMITIVE
 #undef FOREACH_PRIMITIVE
 
 		// SFINAE for containers that have a ::data() member that returns a pointer
-		template <typename T> void add(const T& container, decltype(std::declval<T>().data()) = nullptr) const {
+		template <typename T> static void add(const T& container, decltype(std::declval<T>().data()) = nullptr) {
 			o2_add_vector(detail::o2_signature(*container.data()), (int)container.size(), (void*)container.data());
 		}
 
 		// encode a C array
-		template <typename TElement, size_t TSize> void add(const TElement (&data) [TSize]) const {
+		template <typename TElement, size_t TSize> static void add(const TElement (&data) [TSize]) {
 			o2_add_vector(detail::o2_signature(data[0]), TSize, (void*)data);
 		}
 
-		template <size_t TSize> void add(const char(&data)[TSize]) const {
+		template <size_t TSize> static void add(const char(&data)[TSize]) {
 			o2_add_string(data);
 		}
 
-		void add(const std::string& str) const {
+		static void add(const std::string& str) {
 			o2_add_string(str.c_str());
 		}
 
-		void add(const symbol_t& sym) const {
+		static void add(const char* str) {
+			o2_add_string(str);
+		}
+
+		static void add(const symbol_t& sym) {
 			o2_add_string(sym.symbol.c_str());
 		}
+
+		static void add(void_t) {}
 
 		void encode() const {}
 
@@ -169,10 +209,43 @@ FOREACH_PRIMITIVE
 			std::string path = "!" + name + "/" + method;
 			std::lock_guard<std::recursive_mutex> lg(msg_lock);
 			static std::int64_t id = 0;
-			auto address = on_reply(app, id, reply_handler);
+			auto address = on_reply(app, id, std::move(reply_handler));
 			o2_send_start();
 			encode(id++, address, args...);
 			o2_send_finish(0.0, path.c_str(), 1);
+		}
+
+		template <typename T> struct query_builder;
+
+		template <typename TRet, typename... TArgs>
+		struct query_builder<TRet(TArgs...)> {
+			std::function<std::future<TRet>(TArgs...)> get_fn(const client& c, std::string method) const {
+				return std::move([&c, method = std::move(method)](auto... args) {
+					auto prom = std::make_shared<std::promise<TRet>>();
+					auto fut = prom->get_future();
+					c.query(method.c_str(), [&c, prom](const char *ty) mutable {
+						try {
+							prom->set_value(detail::o2_decode<TRet>());
+						} catch (...) {
+							prom->set_exception(std::current_exception());
+						}
+					}, std::forward<decltype(args)>(args)...);
+					return fut;
+				});
+			}
+		};
+
+		template <typename... TArgs>
+		struct query_builder<void(TArgs...)> {
+			std::function<void(TArgs...)> get_fn(const client& c, std::string method) const {
+				return[&c, method = std::move(method)](auto... args) {
+					c.send(method.c_str(), std::forward<decltype(args)>(args)...);
+				};
+			}
+		};
+
+		template <typename T> auto proxy(std::string method) const {
+			return query_builder<T>().get_fn(*this, std::move(method));
 		}
 	};
 
@@ -209,7 +282,17 @@ FOREACH_PRIMITIVE
 		int implement(std::string path, const TFnObj& fn) {
 			auto traits = detail::infer_signature(fn);
 			wrappers.emplace_front(std::make_unique<wrapper_t>([fn, traits](const o2_msg_data_ptr msg, const char *ty) {
-				traits.relay(fn);
+				if (traits.is_query) {
+					auto id = detail::o2_decode<int64>();
+					auto reply = detail::o2_decode<std::string>();
+					o2_send_start();
+					o2_add_int64(id);
+					client::add(traits.relay(fn));
+					reply += "/get-reply";
+					o2_send_finish(0.0, reply.c_str(), 1);
+				} else {
+					traits.relay(fn);
+				}
 			}));
 			path = "/" + name + "/" + path;
 			return o2_method_new(path.c_str(), traits.typestring(), callback_relay, wrappers.front().get(), false, false);
@@ -235,6 +318,9 @@ FOREACH_PRIMITIVE
 		service provide(std::string n) const;
 		client request(std::string n) const;
 
+		std::string get_reply_address() const {
+			return "!" + local_process;
+		}
 	};
 
 	class directory {

@@ -11,6 +11,16 @@ int main() {
 		std::cout << string << std::endl;
 	});
 
+	my_service.implement("add", [](int a, int b) {
+		return a + b;
+	});
+
 	auto my_client = app.request("service");
-	my_client.send("method", 100, "hello world");
+
+	auto remote_fn = my_client.proxy<void(const char*)>("method");
+	auto remote_add = my_client.proxy<float(int, int)>("add");
+	
+	remote_fn("hello world!");
+
+	std::cout << remote_add(3, 5).get();
 }

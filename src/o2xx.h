@@ -17,6 +17,8 @@
 namespace o2 {
 	/// \brief c++ type that represents the O2_SYMBOL type
 	struct symbol_t {
+        symbol_t(const char *ptr):symbol(ptr) {}
+        symbol_t(std::string str):symbol(std::move(str)) {}
 		std::string symbol;
 	};
 
@@ -37,14 +39,14 @@ namespace o2 {
 		F(O2_SYMBOL, symbol_t, S)
 
 #define F(O2_TYPE, C_TYPE, UNION_MEMBER) \
-		static o2_type o2_signature(C_TYPE) { return O2_TYPE; }
+		static inline o2_type o2_signature(C_TYPE) { return O2_TYPE; }
 FOREACH_PRIMITIVE
 #undef F
 
-		template <typename T> static T extract(o2_arg_ptr p);
+		template <typename T> static inline T extract(o2_arg_ptr p);
 
 #define F(O2_TYPE, C_TYPE, UNION_MEMBER) \
-		template <> static C_TYPE extract<C_TYPE>(o2_arg_ptr p) { return {p->UNION_MEMBER}; }
+template <> inline C_TYPE extract<C_TYPE>(o2_arg_ptr p) { return (std::decay<decltype(p->UNION_MEMBER)>::type)p->UNION_MEMBER; }
 FOREACH_PRIMITIVE
 #undef F
 
@@ -62,7 +64,7 @@ FOREACH_PRIMITIVE
 		template <typename TFirst, typename... TRest> struct static_list<TFirst, TRest...> {
 			using first_t = TFirst;
 			using rest_t = static_list<TRest...>;
-			rest_t rest() const { return rest_t{ }; }
+			rest_t rest() const { return rest_t(); }
 		};
 
 		template <typename TFnObj, typename... TDecoded>
@@ -84,14 +86,14 @@ FOREACH_PRIMITIVE
 			using arg_t = std::tuple<TArgs...>;
 			constexpr static bool is_query = true;
 
-			constexpr const char* typestring() const {
-				static const char sig[] = {
+			static const char* typestring() {
+                static const char sig[] = {
 					'h', 's', (char)o2_signature(TArgs())..., '\0'
 				};
 				return sig;
 			}
 
-			template <typename T> auto relay(const T& fn) const {
+			template <typename T> auto relay(T fn) const {
 				return handle_o2_message(fn, static_list<TArgs...>{});
 			}
 		};
@@ -101,7 +103,7 @@ FOREACH_PRIMITIVE
 			using arg_t = std::tuple<TArgs...>;
 			constexpr static bool is_query = false;
 
-			constexpr const char* typestring() const {
+			static const char* typestring() {
 				static const char sig[] = {
 					(char)o2_signature(TArgs())..., '\0'
 				};
@@ -232,10 +234,10 @@ FOREACH_PRIMITIVE
 		template <typename TRet, typename... TArgs>
 		struct query_builder<TRet(TArgs...)> {
 			std::function<std::future<TRet>(TArgs...)> get_fn(const client& c, std::string method) const {
-				return std::move([&c, method = std::move(method)](auto&&... args) {
+				return [&c, method = std::move(method)](auto&&... args) {
 					auto prom = std::make_shared<std::promise<TRet>>();
 					auto fut = prom->get_future();
-					c.query(method.c_str(), [&c, prom](const char *ty) mutable {
+					c.query(method.c_str(), [prom](const char *ty) mutable {
 						try {
 							prom->set_value(detail::o2_decode<TRet>());
 						} catch (...) {
@@ -243,7 +245,7 @@ FOREACH_PRIMITIVE
 						}
 					}, std::forward<decltype(args)>(args)...);
 					return fut;
-				});
+				};
 			}
 		};
 

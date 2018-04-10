@@ -56,6 +56,7 @@ if (BUILD_CXX_WRAPPER)
 	list(APPEND O2_SRC 
 		src/o2_audio.cpp src/o2_audio.h
 		src/o2xx.cpp src/o2xx.h)
+    set(CMAKE_CXX_STANDARD 14)
 endif()
  
 add_library(o2_static STATIC ${O2_SRC})

@@ -7,6 +7,7 @@
 #include <string>
 #include <cstdint>
 #include <mutex>
+#include <vector>
 
 namespace o2 {
 	namespace audio {
@@ -42,7 +43,6 @@ namespace o2 {
 
 			size_t synchronize_in_buffer(o2_time);
 			size_t unsafe_available() const;
-			receiver *slave = nullptr;
 		public:
 			receiver(service&, int sample_rate, const std::string& endpoint_name, size_t buffer_len = 88200);
 			size_t pull(float *into_buffer, size_t max_frames, int buffer_stride = 1, o2_time* buffer_start = nullptr);

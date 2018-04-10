@@ -24,7 +24,7 @@ namespace o2 {
 		(*relay)(msg, ty);
 	}
 
-	service::service(const application& a, std::string n) :name(std::move(n)), app(a) {
+	service::service(const application& a, std::string n) :app(a), name(std::move(n)) {
 		if (o2_service_new(name.c_str()) != O2_SUCCESS) {
 			throw std::runtime_error("failed to create o2 service");
 		}
@@ -101,7 +101,7 @@ namespace o2 {
 		o2_stop_flag = true;
 		if (worker.joinable()) worker.join();
 		o2_finish();
-	}
+    }
 
 	service application::provide(std::string n) const {
 		return { *this, n };

@@ -218,10 +218,15 @@ FOREACH_PRIMITIVE
 		/// to the message data. A reply-handler hook will be generated on the
 		/// local process, and it will call 'reply_handler' when the reply
 		/// arrives. There is no provision for time-out.
+		static std::int64_t get_id() {
+			static std::int64_t id = 1;
+			return id++;
+		}
+
 		template <typename... TArgs>
 		void query(const char* method, reply_handler_t reply_handler, TArgs&&... args) const {
 			std::lock_guard<std::recursive_mutex> lg(msg_lock);
-			static std::int64_t id = 0;
+			auto id = get_id();
 			auto address = on_reply(app, id, std::move(reply_handler));
 			o2_send_start();
 			encode(id++, address, args...);
@@ -237,7 +242,7 @@ FOREACH_PRIMITIVE
 				return [&c, method = std::move(method)](auto&&... args) {
 					auto prom = std::make_shared<std::promise<TRet>>();
 					auto fut = prom->get_future();
-					c.query(method.c_str(), [prom](const char *ty) mutable {
+					c.query(method.c_str(), [=](const char *ty) mutable {
 						try {
 							prom->set_value(detail::o2_decode<TRet>());
 						} catch (...) {

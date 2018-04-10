@@ -86,7 +86,7 @@ FOREACH_PRIMITIVE
 
 			constexpr const char* typestring() const {
 				static const char sig[] = {
-					'h', 's', (char)o2_signature(TArgs())...
+					'h', 's', (char)o2_signature(TArgs())..., '\0'
 				};
 				return sig;
 			}
@@ -103,7 +103,7 @@ FOREACH_PRIMITIVE
 
 			constexpr const char* typestring() const {
 				static const char sig[] = {
-					(char)o2_signature(TArgs())...
+					(char)o2_signature(TArgs())..., '\0'
 				};
 				return sig;
 			}

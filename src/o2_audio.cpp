@@ -173,7 +173,7 @@ namespace o2 {
 
 		transmitter::transmitter(application& app, int sample_rate, const std::string& endpoint):sender(app.request(endpoint)),sample_rate(sample_rate) {
 			id = std::hash<void*>()(this) ^
-				std::hash<std::string>()(get_machine_identifier());
+				std::hash<std::string>()(app.get_reply_address());
 		}
 
 		static std::mutex l;

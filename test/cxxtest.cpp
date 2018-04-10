@@ -18,7 +18,7 @@ int main() {
 	auto my_client = app.request("service");
 
 	auto remote_fn = my_client.proxy<void(const char*)>("method");
-	auto remote_add = my_client.proxy<float(int, int)>("add");
+	auto remote_add = my_client.proxy<float(float, float)>("add");
 	
 	remote_fn("hello world!");
 

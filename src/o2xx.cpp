@@ -11,7 +11,10 @@ extern "C" {
 #endif
 
 namespace o2 {
-	std::recursive_mutex msg_lock;
+	std::recursive_mutex& msg_lock() {
+		static std::recursive_mutex l;
+		return l;
+	}
 
 	void service::callback_wrapper(const o2_msg_data_ptr msg, const char* ty, o2_arg_ptr* argv, int argc, void *user) {
 		auto method = (method_record_t*)user;
@@ -25,6 +28,7 @@ namespace o2 {
 	}
 
 	service::service(const application& a, std::string n) :app(a), name(std::move(n)) {
+		std::lock_guard<std::recursive_mutex> lg(msg_lock());
 		if (o2_service_new(name.c_str()) != O2_SUCCESS) {
 			throw std::runtime_error("failed to create o2 service");
 		}
@@ -32,6 +36,7 @@ namespace o2 {
 
 	service::~service() {
 		if (name.size()) {
+			std::lock_guard<std::recursive_mutex> lg(msg_lock());
 			o2_service_free((char*)name.c_str());
 			app.request("directory").send("remove-service", symbol_t{ name });
 		}
@@ -54,6 +59,7 @@ namespace o2 {
 			std::move(method)
 		}));
 		path = "/" + name + "/" + path;
+		std::lock_guard<std::recursive_mutex> lg(msg_lock());
 		return o2_method_new(path.c_str(), ty.c_str(), callback_wrapper, methods.front().get(), true, true);
 	}
 
@@ -62,6 +68,12 @@ namespace o2 {
 			app.request("directory").send("add-method", symbol_t{ name + "/" + path }, ty, doc);
 			return O2_SUCCESS;
 		} else return O2_FAIL;
+	}
+
+	void client::wait_for_discovery(int poll_rate) {
+		while (o2_status(name.c_str()) == O2_FAIL) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(poll_rate));
+		}
 	}
 
 	application::application(std::string n, int rate) :name(std::move(n)) {
@@ -76,7 +88,7 @@ namespace o2 {
 			auto sleep_dur = std::chrono::microseconds(1000000 / rate);
 			while (!o2_stop_flag) {
 				{
-					std::lock_guard<std::recursive_mutex> lg(msg_lock);
+					std::lock_guard<std::recursive_mutex> lg(msg_lock());
 					o2_poll();
 				}
 				std::this_thread::sleep_for(sleep_dur);
@@ -130,7 +142,7 @@ namespace o2 {
 			auto reply_id = argv[0]->h;
 			std::string reply_address = argv[1]->s;
 			std::string search_pattern = argv[2]->s;
-			std::lock_guard<std::recursive_mutex> lg(msg_lock);
+			std::lock_guard<std::recursive_mutex> lg(msg_lock());
 
 			o2_send_start();
 			o2_add_int64(reply_id);

@@ -144,7 +144,7 @@ FOREACH_PRIMITIVE
 	std::string on_reply(const application&, std::int64_t id, reply_handler_t);
 
 	/// \brief because o2 is not re-entrant, provide a global lock for threaded access
-	extern std::recursive_mutex msg_lock;
+	std::recursive_mutex& msg_lock();
 
 	/// \brief c++ class that represents a remote o2 service
 	class client {
@@ -160,6 +160,7 @@ FOREACH_PRIMITIVE
 #define FOREACH_PRIMITIVE F(float) F(int32) F(double) F(int64) F(bool) F(char)
 #define F(Type) static void add(Type v) { o2_add_ ## Type (v); }
 		FOREACH_PRIMITIVE
+#undef F
 #undef FOREACH_PRIMITIVE
 
 		// SFINAE for containers that have a ::data() member that returns a pointer
@@ -201,7 +202,7 @@ FOREACH_PRIMITIVE
 	public:
 		/// \brief send a timed o2 message
 		template <typename... TArgs> void send(o2_time time, const char* method, TArgs&&... args) const {
-			std::lock_guard<std::recursive_mutex> lg(msg_lock);
+			std::lock_guard<std::recursive_mutex> lg(msg_lock());
 			o2_send_start();
 			encode(args...);
 			o2_send_finish(time, ("!" + name + "/" + method).c_str(), 1);
@@ -274,6 +275,9 @@ FOREACH_PRIMITIVE
 		template <typename T> auto proxy(std::string method) const {
 			return query_builder<T>().get_fn(*this, std::move(method));
 		}
+
+		/// \brief block until o2_status succeeds for the requested service
+		void wait_for_discovery(int poll_rate_millisec = 50);
 	};
 
 	/// \brief represents an o2 service provided by the local process

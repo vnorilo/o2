@@ -123,7 +123,8 @@ set(SINGLE_C_FILE_TESTS
 	infotest2)
 
 set(SINGLE_CXX_FILE_TESTS 
-	cxxtest)
+	cxxtest
+	audiotest)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)	
 

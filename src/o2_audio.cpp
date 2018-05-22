@@ -8,20 +8,21 @@
 
 namespace o2 {
 	namespace audio {
-		receiver::receiver(service& service, int sr, const std::string& endpoint, size_t buffer_size)
+		receiver::receiver(application& app, std::string service_name, int sr, const std::string& endpoint, size_t buffer_size)
 			:ring_buffer(buffer_size)
-			,sample_rate(sr) {
+			,sample_rate(sr)
+			,recv(app.provide(service_name)) {
 
-			service.implement(endpoint + "/sync", "ht", "Receives stream id and sets stream time.", [this](o2_arg_ptr* argv, int argn) {
+			recv.implement(endpoint + "/sync", "ht", "Receives stream id and sets stream time.", [this](o2_arg_ptr* argv, int argn) {
 				sync(argv[0]->h, argv[1]->t);
 			});
 
-			service.implement(endpoint + "/push", "hvf", "Receives stream id and a vector of floating point samples.", [this](o2_arg_ptr* argv, int argn) {
+			recv.implement(endpoint + "/push", "hvf", "Receives stream id and a vector of floating point samples.", [this](o2_arg_ptr* argv, int argn) {
 				auto vector = argv[1]->v;
 				push(argv[0]->h, vector.vf, vector.len);
 			});
 
-			service.implement(endpoint + "/close", "h", "Stops reading stream id.", [this](o2_arg_ptr* argv, int argn) {
+			recv.implement(endpoint + "/close", "h", "Stops reading stream id.", [this](o2_arg_ptr* argv, int argn) {
 				std::lock_guard<std::mutex> lg(this->buffer_lock);
 #ifndef NDEBUG
 				std::clog << "* Stream " << argv[0]->h << " closed\n";
@@ -42,6 +43,7 @@ namespace o2 {
 			std::lock_guard<std::mutex> lg(buffer_lock);
 			return streams.empty();
 		}
+
 
 		void receiver::push(endpoint_id_t id, const float* buffer, size_t samples) {
 			while (samples) {
@@ -112,7 +114,7 @@ namespace o2 {
 				return pos;
 			} else {
 				reference = time;
-				read_head = 0; //size_t(sample_rate * (o2_time_get() - reference));
+				read_head = 0; 
 				has_sync = true;
 				return 0;
 			}
@@ -138,6 +140,18 @@ namespace o2 {
 		void receiver::gap(size_t discard) {
 			std::lock_guard<std::mutex> lg(buffer_lock);
 			read_head += discard;
+		}
+
+		size_t receiver::drop(size_t max_frames, o2_time* buffer_start) {
+			std::lock_guard<std::mutex> lg(buffer_lock);
+			if (buffer_start) {
+				*buffer_start = reference + double(read_head) / double(sample_rate);
+			}
+			auto avail = unsafe_available();
+			auto cando = std::min(max_frames, avail);
+			read_head += cando;
+
+			return cando;
 		}
 
 		size_t receiver::pull(float *into_buffer, size_t max_frames, int stride, o2_time* buffer_start) {
@@ -171,21 +185,53 @@ namespace o2 {
 			return cando;
 		}
 
-		transmitter::transmitter(application& app, int sample_rate, const std::string& endpoint):sender(app.request(endpoint)),sample_rate(sample_rate) {
+		transmitter::transmitter(application& app, std::string service_name,int sample_rate, const std::string& endpoint):sender(app.request(service_name + "/" + endpoint)),recv(service_name),sample_rate(sample_rate) {
+			// generate unique id based on the instance identity and O2 process identity
 			id = std::hash<void*>()(this) ^
-				std::hash<std::string>()(app.get_reply_address());
+				 std::hash<std::string>()(app.get_reply_address());
+			has_time = false;
 		}
 
 		static std::mutex l;
 
 		void transmitter::set_stream_time(o2_time t) {
-			time = t;
+			if (!has_time) wait_for_sync();
 			sample_counter = 0;
-			sender.send(time - 0.1, "sync", id, time);
+			sender.send(t > o2_time_get() ? t : 0.0, "sync", id, time);
+		}
+
+		void transmitter::wait_for_sync() {
+			while (!has_time) {
+				auto st = o2_status(recv.c_str());
+				if (st < O2_LOCAL) {
+					std::clog << "notime\n";
+					std::this_thread::sleep_for(std::chrono::milliseconds(500));
+				} else {
+					has_time = true;
+				}
+ 			}
+
+			sample_counter = 0;
+			time = o2_time_get();
 		}
 
 		size_t transmitter::push(const float* buffer, size_t len) {
+			if (!has_time) wait_for_sync();
+
 			if (!len) return len;
+
+			const auto buffer_limit = sample_rate / 4;
+			if (len > buffer_limit) {
+				size_t did_push = 0;
+				while (len > buffer_limit) {
+					auto pushed = push(buffer, buffer_limit);
+					buffer += pushed;
+					len -= pushed;
+					did_push += pushed;
+				}
+				return did_push;
+			}
+
 			// provide a STL-like interface into pointer/length pair
 			struct view {
 				const float* buffer;
@@ -195,8 +241,9 @@ namespace o2 {
 			};
 
 			double stream_time = time + double(sample_counter) / double(sample_rate);
-			// schedule message for delivery 100ms before the time stamp
-			sender.send(stream_time - 0.1, "push", id, view{ buffer, len });
+			stream_time -= transmit_ahead;
+			if (stream_time < o2_time_get()) stream_time = 0;
+			sender.send(stream_time, "push", id, view{ buffer, len });
 			sample_counter += len;
 			return len;
 		}

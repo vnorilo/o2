@@ -226,7 +226,7 @@ FOREACH_PRIMITIVE
 
 		template <typename... TArgs>
 		void query(const char* method, reply_handler_t reply_handler, TArgs&&... args) const {
-			std::lock_guard<std::recursive_mutex> lg(msg_lock);
+			std::lock_guard<std::recursive_mutex> lg(msg_lock());
 			auto id = get_id();
 			auto address = on_reply(app, id, std::move(reply_handler));
 			o2_send_start();
@@ -284,6 +284,7 @@ FOREACH_PRIMITIVE
 	class service {
 		friend class application;
 
+		bool own_service = true;
 		const application &app;
 		std::string name;
 
@@ -368,6 +369,8 @@ FOREACH_PRIMITIVE
 		std::string get_reply_address() const {
 			return "!" + local_process;
 		}
+
+		static void tick();
 	};
 
 	/// \brief provides a directory service for the o2 methods in the application

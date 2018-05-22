@@ -124,7 +124,8 @@ set(SINGLE_C_FILE_TESTS
 
 set(SINGLE_CXX_FILE_TESTS 
 	cxxtest
-	audiotest)
+	audiotest
+	audiolatencytest)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)	
 

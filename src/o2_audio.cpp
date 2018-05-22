@@ -204,7 +204,6 @@ namespace o2 {
 			while (!has_time) {
 				auto st = o2_status(recv.c_str());
 				if (st < O2_LOCAL) {
-					std::clog << "notime\n";
 					std::this_thread::sleep_for(std::chrono::milliseconds(500));
 				} else {
 					has_time = true;
@@ -242,8 +241,9 @@ namespace o2 {
 
 			double stream_time = time + double(sample_counter) / double(sample_rate);
 			stream_time -= transmit_ahead;
-			if (stream_time < o2_time_get()) stream_time = 0;
+			if (stream_time < o2_time_get() + 0.1) stream_time = 0;
 			sender.send(stream_time, "push", id, view{ buffer, len });
+			application::tick();
 			sample_counter += len;
 			return len;
 		}

@@ -29,13 +29,19 @@ namespace o2 {
 
 	service::service(const application& a, std::string n) :app(a), name(std::move(n)) {
 		std::lock_guard<std::recursive_mutex> lg(msg_lock());
-		if (o2_service_new(name.c_str()) != O2_SUCCESS) {
-			throw std::runtime_error("failed to create o2 service");
+		auto err = o2_service_new(name.c_str());
+		switch (err) {
+			case O2_SERVICE_EXISTS:
+				own_service = false;
+			case O2_SUCCESS:
+				return;
+			default:
+				throw std::runtime_error("failed to create o2 service");
 		}
 	}
 
 	service::~service() {
-		if (name.size()) {
+		if (own_service) {
 			std::lock_guard<std::recursive_mutex> lg(msg_lock());
 			o2_service_free((char*)name.c_str());
 			app.request("directory").send("remove-service", symbol_t{ name });
@@ -46,11 +52,13 @@ namespace o2 {
 	service::service(service&& from) :app(from.app) {
 		std::swap(name, from.name);
 		std::swap(methods, from.methods);
+		std::swap(own_service, from.own_service);
 	}
 
 	service& service::operator=(service&& s) {
 		std::swap(name, s.name);
 		std::swap(methods, s.methods);
+		std::swap(own_service, s.own_service);
 		return *this;
 	}
 
@@ -87,10 +95,7 @@ namespace o2 {
 		worker = std::thread([rate]() {
 			auto sleep_dur = std::chrono::microseconds(1000000 / rate);
 			while (!o2_stop_flag) {
-				{
-					std::lock_guard<std::recursive_mutex> lg(msg_lock());
-					o2_poll();
-				}
+				tick();
 				std::this_thread::sleep_for(sleep_dur);
 			}
 		});
@@ -107,6 +112,11 @@ namespace o2 {
 				app->reply_handlers.erase(h);
 			}
 		}
+	}
+
+	void application::tick() {
+		std::lock_guard<std::recursive_mutex> lg(msg_lock());
+		o2_poll();
 	}
 
 	application::~application() {

@@ -63,7 +63,6 @@ namespace o2 {
 			size_t sample_counter = 0;
 			int sample_rate;
 			bool has_time;
-			void wait_for_sync();
 			o2_time time;
 			o2_time transmit_ahead = 0.3;
 		public:
@@ -76,6 +75,7 @@ namespace o2 {
 			void close();
 			size_t get_sample_counter() const { return sample_counter; }
 			void set_transmit_ahead(o2_time ahead) { transmit_ahead = ahead; }
+			void wait_for_sync();
 		};
 	}
 }

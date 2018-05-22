@@ -32,9 +32,16 @@ std::vector<o2::audio::transmitter> construct_transmitters(std::string transmitt
 
 void loopback() {
 	using namespace o2::audio;
+	std::clog << "Starting loopback service\n";
 
 	auto receivers = construct_receivers("server");
 	auto transmitters = construct_transmitters("client");
+
+	std::clog << "Waiting for clock synchronization... ";
+	for (auto &t : transmitters) {
+		t.wait_for_sync();
+	}
+	std::clog << "Ok!\n";
 
 	std::vector<int> did(num_channels);
 	std::vector<float> work;
@@ -79,11 +86,11 @@ void transmit() {
 		int min_recv = received[0];
 		for (int i = 0;i < num_channels;++i) {
 			auto to_send = std::min((int)temp.size(), test_length - sent[i]);
-			sent[i] += transmitters[i].push(temp.data(), to_send);
+			sent[i] += (int)transmitters[i].push(temp.data(), to_send);
 
 			if (receivers[i]->is_connected()) {
 				auto avail = receivers[i]->available();
-				received[i] += receivers[i]->drop(avail);
+				received[i] += (int)receivers[i]->drop(avail);
 
 				if (received[i] < test_length) pending = true;
 				min_recv = std::min(received[i], min_recv);

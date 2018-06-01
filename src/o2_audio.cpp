@@ -243,7 +243,6 @@ namespace o2 {
 			stream_time -= transmit_ahead;
 			if (stream_time < o2_time_get() + 0.1) stream_time = 0;
 			sender.send(stream_time, "push", id, view{ buffer, len });
-			application::tick();
 			sample_counter += len;
 			return len;
 		}

@@ -107,6 +107,7 @@ void transmit() {
 		for (;;) {
 			bool pending = false;
 			for (int i = 0;i < num_channels;++i) {
+				o2::application::tick();
 				if (receivers[i]->is_connected()) {
 					auto avail = receivers[i]->available();
 					received[i] += (int)receivers[i]->drop(std::min(temp.size(), avail));
@@ -153,7 +154,7 @@ int main(int argn, const char* argv[]) {
         num_channels = strtol(getenv("O2_AUDIO_CHANNELS"), nullptr, 10);
     }
     
-    app = std::make_unique<o2::application>("app", 1000);
+    app = std::make_unique<o2::application>("app", 100);
 	
 	do_send = do_loop = argn < 2;
 

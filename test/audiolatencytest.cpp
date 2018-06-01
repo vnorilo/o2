@@ -11,7 +11,7 @@
 std::unique_ptr<o2::application> app;
 
 int sample_rate = 44100;
-int num_channels = 200;
+int num_channels = 1;
 volatile bool run = true;
 
 std::vector<std::unique_ptr<o2::audio::receiver>> construct_receivers(std::string receiver_name) {
@@ -80,7 +80,7 @@ void transmit() {
 	}
 
 	using clock_t = std::chrono::high_resolution_clock;
-	using measurement_t = clock_t::duration;
+	using measurement_t = std::chrono::nanoseconds;
 
 	std::vector<measurement_t> send_time, recv_time, total_time;
     
@@ -99,7 +99,7 @@ void transmit() {
 		for (auto &r : transmitters) {
 			r.push(temp.data(), temp.size());
 		}
-        auto sent = std::chrono::time_point_cast<std::chrono::nanoseconds>(clock_t::now());
+        auto sent = std::chrono::time_point_cast<measurement_t>(clock_t::now());
 
 		for (auto &r : received) r = 0;
 		for (;;) {
@@ -114,18 +114,29 @@ void transmit() {
 			if (!pending) break;
 		}
 
-		auto received = std::chrono::time_point_cast<std::chrono::nanoseconds>(clock_t::now());
+		auto received = std::chrono::time_point_cast<measurement_t>(clock_t::now());
 
 		send_time.emplace_back(sent - start);
 		recv_time.emplace_back(received - sent);
         total_time.emplace_back(received - start);
 	}
-    
-    
 
-	std::clog << "Median send time   : " << double(send_time[send_time.size() / 2].count()) / 1000. << "us\n"
-	   		  << "Median recv latency: " << double(recv_time[recv_time.size() / 2].count()) / 1000. << "us\n"
-              << "Median roundtrip   : " << double(total_time[total_time.size() / 2].count()) / 1000. << "us\n";
+	static int num_bins = 10;
+	auto gen_report = [](const char* label, decltype(send_time) data) {
+		std::sort(data.begin(), data.end());
+		std::cout << "\"" << label << "\": [";
+		for (int i = 0;i < num_bins;++i) {
+			if (i) std::cout << ", ";
+			std::cout << data[(i * data.size()) / num_bins].count();
+		}
+		std::cout << "]";
+	};
+
+	std::cout << "{\n";
+	gen_report("send", send_time); std::cout << ",\n";
+	gen_report("recv", recv_time); std::cout << ",\n";
+	gen_report("roundtrip", total_time);
+	std::cout << "\n}";
 
 	run = false;
 }

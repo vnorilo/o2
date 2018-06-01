@@ -33,7 +33,7 @@ std::vector<o2::audio::transmitter> construct_transmitters(std::string transmitt
 void loopback() {
 	using namespace o2::audio;
 
-	std::clog << "Starting loopback...\n";
+	std::clog << "Starting loopback on " << num_channels << " channels\n";
 
 	auto receivers = construct_receivers("client");
 	auto transmitters = construct_transmitters("server");
@@ -71,6 +71,8 @@ int num_tests = 1000;
 int buffer_size = 1000;
 
 void transmit() {
+	std::clog << "Transmitting on " << num_channels << " channels\n";
+
 	auto receivers = construct_receivers("server");
 	auto transmitters = construct_transmitters("client");
 
@@ -119,7 +121,10 @@ void transmit() {
 		send_time.emplace_back(sent - start);
 		recv_time.emplace_back(received - sent);
         total_time.emplace_back(received - start);
+		std::clog << i << " / " << num_tests << "\r";
 	}
+
+	std::clog << std::endl;
 
 	static int num_bins = 10;
 	auto gen_report = [](const char* label, decltype(send_time) data) {
@@ -148,7 +153,7 @@ int main(int argn, const char* argv[]) {
         num_channels = strtol(getenv("O2_AUDIO_CHANNELS"), nullptr, 10);
     }
     
-    app = std::make_unique<o2::application>("app", 100);
+    app = std::make_unique<o2::application>("app", 1000);
 	
 	do_send = do_loop = argn < 2;
 

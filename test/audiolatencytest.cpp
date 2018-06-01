@@ -144,6 +144,10 @@ void transmit() {
 int main(int argn, const char* argv[]) {
 	bool do_send, do_loop;
     
+    if (getenv("O2_AUDIO_CHANNELS")) {
+        num_channels = strtol(getenv("O2_AUDIO_CHANNELS"), nullptr, 10);
+    }
+    
     app = std::make_unique<o2::application>("app", 100);
 	
 	do_send = do_loop = argn < 2;

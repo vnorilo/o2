@@ -758,7 +758,7 @@ int o2_poll()
 }
 
 
-int o2_stop_flag = FALSE;
+volatile int o2_stop_flag = FALSE;
 
 #ifdef WIN32
 #define usleep(x) Sleep((x)/1000)

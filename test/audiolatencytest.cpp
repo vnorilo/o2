@@ -8,15 +8,16 @@
 #include <iostream>
 #include <chrono>
 
-o2::application app("audio", 2000);
+std::unique_ptr<o2::application> app;
+
 int sample_rate = 44100;
-int num_channels = 1;
+int num_channels = 200;
 volatile bool run = true;
 
 std::vector<std::unique_ptr<o2::audio::receiver>> construct_receivers(std::string receiver_name) {
 	std::vector<std::unique_ptr<o2::audio::receiver>> receivers;
 	for (int i = 0;i < num_channels;++i) {
-		receivers.emplace_back(std::make_unique<o2::audio::receiver>(app, receiver_name, sample_rate, std::to_string(i)));
+		receivers.emplace_back(std::make_unique<o2::audio::receiver>(*app, receiver_name, sample_rate, std::to_string(i)));
 	}
 	return receivers;
 }
@@ -24,7 +25,7 @@ std::vector<std::unique_ptr<o2::audio::receiver>> construct_receivers(std::strin
 std::vector<o2::audio::transmitter> construct_transmitters(std::string transmitter_name) {
 	std::vector<o2::audio::transmitter> transmitters;
 	for (int i = 0;i < num_channels;++i) {
-		transmitters.emplace_back(app, transmitter_name, sample_rate, std::to_string(i));
+		transmitters.emplace_back(*app, transmitter_name, sample_rate, std::to_string(i));
 	}
 	return transmitters;
 }
@@ -66,20 +67,26 @@ void loopback() {
 	}
 }
 
+int num_tests = 1000;
+int buffer_size = 1000;
+
 void transmit() {
 	auto receivers = construct_receivers("server");
 	auto transmitters = construct_transmitters("client");
 
-	std::vector<float> temp(1000);
-	for (int i = 0;i < 1000;++i) {
+	std::vector<float> temp(buffer_size);
+	for (int i = 0;i < temp.size();++i) {
 		temp[i] = sinf(float(i * 0.1 * M_PI));
 	}
 
 	using clock_t = std::chrono::high_resolution_clock;
 	using measurement_t = clock_t::duration;
 
-	auto num_tests = 100;
-	std::vector<measurement_t> send_time, recv_time;
+	std::vector<measurement_t> send_time, recv_time, total_time;
+    
+    send_time.reserve(num_tests);
+    recv_time.reserve(num_tests);
+    total_time.reserve(num_tests);
 
 	std::vector<int> received(num_channels);
 
@@ -92,7 +99,7 @@ void transmit() {
 		for (auto &r : transmitters) {
 			r.push(temp.data(), temp.size());
 		}
-		auto sent = clock_t::now();
+        auto sent = std::chrono::time_point_cast<std::chrono::nanoseconds>(clock_t::now());
 
 		for (auto &r : received) r = 0;
 		for (;;) {
@@ -107,20 +114,26 @@ void transmit() {
 			if (!pending) break;
 		}
 
-		auto received = clock_t::now();
+		auto received = std::chrono::time_point_cast<std::chrono::nanoseconds>(clock_t::now());
 
 		send_time.emplace_back(sent - start);
 		recv_time.emplace_back(received - sent);
+        total_time.emplace_back(received - start);
 	}
+    
+    
 
-	std::clog << "Median send time   : " << double(send_time[send_time.size() / 2].count()) / 1000000. << "ms\n"
-	   		  << "Median recv latency: " << double(recv_time[recv_time.size() / 2].count()) / 1000000. << "ms\n";
+	std::clog << "Median send time   : " << double(send_time[send_time.size() / 2].count()) / 1000. << "us\n"
+	   		  << "Median recv latency: " << double(recv_time[recv_time.size() / 2].count()) / 1000. << "us\n"
+              << "Median roundtrip   : " << double(total_time[total_time.size() / 2].count()) / 1000. << "us\n";
 
 	run = false;
 }
 
 int main(int argn, const char* argv[]) {
 	bool do_send, do_loop;
+    
+    app = std::make_unique<o2::application>("app", 100);
 	
 	do_send = do_loop = argn < 2;
 

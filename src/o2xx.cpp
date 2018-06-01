@@ -121,7 +121,7 @@ namespace o2 {
 
 	application::~application() {
 		o2_stop_flag = true;
-		if (worker.joinable()) worker.join();
+        worker.join();
 		o2_finish();
     }
 

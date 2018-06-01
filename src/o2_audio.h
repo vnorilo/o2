@@ -23,7 +23,7 @@ namespace o2 {
 			std::vector<float> ring_buffer;
 			mutable std::mutex buffer_lock;
 
-			bool has_sync = false, owns_service = true;
+			bool has_sync = false;
 			o2_time reference;
 			size_t read_head = 0;
 			int sample_rate;

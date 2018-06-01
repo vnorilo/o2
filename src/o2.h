@@ -595,7 +595,7 @@ extern const char *o2_application_name;
  * simple loop that calls o2_poll(). To exit the loop, set
  * #o2_stop_flag to #TRUE
  */
-extern int o2_stop_flag;
+extern volatile int o2_stop_flag;
 
 
 /**

@@ -254,11 +254,12 @@ int send_by_tcp_to_process(process_info_ptr info, o2_msg_data_ptr msg)
 retry:
     if (send(fd, (char *) &MSG_DATA_LENGTH(msg), len + sizeof(int32_t),
              MSG_NOSIGNAL) < 0) {
-		if (errno == ETIMEDOUT) {
-			o2_poll();
+		int err = errno;
+		if (!err || err == ETIMEDOUT) {
+			o2_recv();
 			goto retry;
 		}
-        if (errno != EAGAIN && errno != EINTR) {
+        if (err != EAGAIN && err != EINTR) {
             O2_DBo(printf("%s removing remote process after send error to socket %ld", o2_debug_prefix, (long) fd));
             o2_remove_remote_process(info);
         } else {

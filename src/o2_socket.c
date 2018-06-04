@@ -418,13 +418,21 @@ int o2_make_tcp_recv_socket(int tag, int port,
         // rather than waiting a short period for additional data to be
         // sent. Waiting might allow the outgoing packet to consolidate 
         // sent data, resulting in greater throughput, but more latency.
-        int option = 1, timeout_ms = 100;
-        setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *) &option,
+        int option = 1;
+#ifdef WIN32
+		int send_timeout = 10; // milliseconds
+#else
+		struct timeval send_timeout;
+		send_timeout.tv_sec = 0;
+		send_timeout.tv_usec = 10000;
+#endif
+
+		setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *) &option,
                    sizeof(option));
 		
 		// set send timeout to deal with tcp stalls
-		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *) &timeout_ms, 
-				   sizeof(timeout_ms));
+		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *) &send_timeout, 
+				   sizeof(send_timeout));
 
 		if (tag == OSC_TCP_SERVER_SOCKET) {
             (*info)->port = port;

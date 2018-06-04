@@ -84,8 +84,8 @@ namespace o2 {
 		}
 	}
 
-	application::application(std::string n, int rate) :name(std::move(n)) {
-		o2_initialize(n.c_str());		
+	application::application(std::string n, int rate) :name(n) {
+		if (o2_initialize(n.c_str()) == O2_FAIL) throw std::runtime_error("Could not initialize o2");
 
 		local_process = o2_process->proc.name;
 

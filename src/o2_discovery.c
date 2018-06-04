@@ -42,12 +42,6 @@ int o2_port_map[PORT_MAX] = { 64541, 60238, 57143, 55764, 56975, 62711,
 
 int o2_discovery_initialize()
 {
-#ifdef WIN32
-    //Initialize (in Windows)
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-#endif // WIN32
-
     // Set up a socket for broadcasting discovery info
     if ((broadcast_sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("Create broadcast socket");

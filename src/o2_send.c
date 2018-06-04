@@ -252,8 +252,8 @@ int send_by_tcp_to_process(process_info_ptr info, o2_msg_data_ptr msg)
 	FD_SET(fd, &writable_sockets);
 
 retry:
-    if (send(fd, (char *) &MSG_DATA_LENGTH(msg), len + sizeof(int32_t),
-             MSG_NOSIGNAL) < 0) {
+    if (SOCKET_ERROR == send(fd, (char *) &MSG_DATA_LENGTH(msg), len + sizeof(int32_t),
+             MSG_NOSIGNAL)) {
 		int err = errno;
 		if (!err || err == ETIMEDOUT) {
 			o2_recv();

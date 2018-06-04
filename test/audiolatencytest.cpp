@@ -51,9 +51,8 @@ void loopback() {
 		for (int i = 0;i < num_channels;++i) {
 			if (receivers[i]->is_connected()) {
 				auto avail = receivers[i]->available();
-				if (avail > work.size()) {
-					work.resize(avail);
-				}
+				
+				work.resize(avail);
 
 				receivers[i]->pull(work.data(), avail);
 				for (auto &s : work) s = -s;
@@ -178,13 +177,16 @@ void bandwidth() {
 		bool pending = false;
 		o2::application::tick();
 		for (int i = 0;i < num_channels;++i) {
-			auto to_send = received[i] + (buffer_size * 16) - sent[i];
-			if (to_send > buffer_size) to_send = buffer_size;
+				auto to_send = received[i] + (buffer_size * 2) - sent[i];
+				if (to_send > buffer_size) to_send = buffer_size;
 
-			received[i] += receivers[i]->drop(buffer_size);
-			if (to_send) transmitters[i].push(temp.data(), to_send);
+				if (receivers[i]->is_connected()) {
+					received[i] += receivers[i]->drop(buffer_size * 8);
+				}
 
-			if (received[i] < total_samples) pending = true;
+				if (to_send) sent[i] += transmitters[i].push(temp.data(), to_send);
+
+				if (received[i] < total_samples) pending = true;
 		}
 		if (!pending) break;
 		std::clog << "received " << received[0] << " / " << total_samples << "\r";
@@ -201,12 +203,12 @@ void bandwidth() {
 
 int main(int argn, const char* argv[]) {
 	bool do_send, do_loop, do_bandwidth;
-    
-    if (getenv("O2_AUDIO_CHANNELS")) {
+    	
+	if (getenv("O2_AUDIO_CHANNELS")) {
         num_channels = strtol(getenv("O2_AUDIO_CHANNELS"), nullptr, 10);
     }
-    
-    app = std::make_unique<o2::application>("app", 100);
+
+	app = std::make_unique<o2::application>("audio_test", 100);
 	
 	do_send = do_loop = do_bandwidth = argn < 2;
 

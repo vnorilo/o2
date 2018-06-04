@@ -54,7 +54,6 @@ namespace o2 {
 					streams[id].sample_count += samples;
 					return;
 				case partial_write:
-					break;
 				case partially_old:
 				case partially_new:
 				case ok:

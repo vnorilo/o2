@@ -233,7 +233,7 @@ int o2_send_remote(o2_msg_data_ptr msg, int tcp_flag, process_info_ptr info)
 // message after calling this.
 int send_by_tcp_to_process(process_info_ptr info, o2_msg_data_ptr msg)
 {
-    O2_DBs(if (msg->address[1] != '_' && !isdigit(msg->address[1]))
+	O2_DBs(if (msg->address[1] != '_' && !isdigit(msg->address[1]))
            o2_dbg_msg("sending TCP", msg, "to", info->proc.name));
     O2_DBS(if (msg->address[1] == '_' || isdigit(msg->address[1]))
            o2_dbg_msg("sending TCP", msg, "to", info->proc.name));
@@ -246,8 +246,18 @@ int send_by_tcp_to_process(process_info_ptr info, o2_msg_data_ptr msg)
     int32_t len = MSG_DATA_LENGTH(msg);
     MSG_DATA_LENGTH(msg) = htonl(len);
     SOCKET fd = DA_GET(o2_fds, struct pollfd, info->fds_index)->fd;
+
+	fd_set writable_sockets;
+	FD_ZERO(&writable_sockets);
+	FD_SET(fd, &writable_sockets);
+
+retry:
     if (send(fd, (char *) &MSG_DATA_LENGTH(msg), len + sizeof(int32_t),
              MSG_NOSIGNAL) < 0) {
+		if (errno == ETIMEDOUT) {
+			o2_poll();
+			goto retry;
+		}
         if (errno != EAGAIN && errno != EINTR) {
             O2_DBo(printf("%s removing remote process after send error to socket %ld", o2_debug_prefix, (long) fd));
             o2_remove_remote_process(info);

@@ -107,6 +107,7 @@ void transmit() {
 		for (auto &r : received) r = 0;
 		for (;;) {
 			bool pending = false;
+			o2::application::tick();
 			for (int i = 0;i < num_channels;++i) {
 				o2::application::tick();
 				if (receivers[i]->is_connected()) {
@@ -175,26 +176,26 @@ void bandwidth() {
 
 	for (;;) {
 		bool pending = false;
+		o2::application::tick();
 		for (int i = 0;i < num_channels;++i) {
 			auto to_send = received[i] + (buffer_size * 16) - sent[i];
 			if (to_send > buffer_size) to_send = buffer_size;
 
+			received[i] += receivers[i]->drop(buffer_size);
 			if (to_send) transmitters[i].push(temp.data(), to_send);
 
-			received[i] += receivers[i]->drop(buffer_size);
 			if (received[i] < total_samples) pending = true;
 		}
 		if (!pending) break;
-		std::clog << "received " << received[0] << " / " << total_samples << "\n";
-		o2::application::tick();
+		std::clog << "received " << received[0] << " / " << total_samples << "\r";
 		std::this_thread::yield();
 	}
 
 	auto end = std::chrono::time_point_cast<measurement_t>(clock_t::now());
 
-	double seconds = (double)(start - end).count() / 1000000.0;
+	double seconds = (double)(end - start).count() / 1000000.0;
 	double data_rate = (double)total_samples / seconds;
-	std::clog << "Transmitted " << num_channels << " channels at " << data_rate << "Hz\n";
+	std::clog << "\n\nTransmitted " << num_channels << " channels at " << data_rate << "Hz\n";
 
 }
 
@@ -207,7 +208,7 @@ int main(int argn, const char* argv[]) {
     
     app = std::make_unique<o2::application>("app", 100);
 	
-	do_send = do_loop = argn < 2;
+	do_send = do_loop = do_bandwidth = argn < 2;
 
 	for (int i = 1;i < argn;++i) {
 		if (!strcmp(argv[i], "latency")) do_send = true;
